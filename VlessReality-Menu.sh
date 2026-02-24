@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (终极除虫版 v2.1 - 修复 CRLF 换行符)
+# Xray VLESS-Reality 一键安装管理脚本 (终极回车符杀手版 v2.2)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-2.1"
+readonly SCRIPT_VERSION="V-Custom-2.2"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -51,19 +51,19 @@ get_public_ip() {
     fi
 }
 
-# 设置快捷键 (彻底解决 Windows 复制粘贴引起的 CRLF 报错)
+# 设置快捷键 (终极解法：使用 tr 暴力剔除 Windows 回车符)
 setup_shortcut() {
     local target="/usr/bin/vless"
     local current_file
     
     current_file=$(readlink -f "$0" 2>/dev/null || echo "$0")
     
-    # 只有当目前运行的文件不是快捷键本身，且文件存在时，才进行覆盖
     if [[ -f "$current_file" && "$current_file" != "$target" ]]; then
-        cp -f "$current_file" "$target"
-        # 【终极修复】强制抹除所有的 \r 回车符，防止 Linux 报错 No such file
-        sed -i 's/\r$//' "$target" 2>/dev/null || true
+        # 暴力过滤所有 \r 字符，彻底解决 bad interpreter 报错
+        cat "$current_file" | tr -d '\r' > "$target"
         chmod +x "$target"
+        # 刷新 bash 缓存
+        hash -r 2>/dev/null || true
     fi
 }
 
@@ -281,7 +281,7 @@ main_menu() {
         clear
         echo -e ""
         echo -e "${cyan}   ==========================================================${none}"
-        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.1]${none} | 快捷键: ${green}vless${none}"
+        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.2]${none} | 快捷键: ${green}vless${none}"
         echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         echo -e "   ${magenta}■ 服务器状态${none}"
@@ -312,21 +312,4 @@ main_menu() {
             3) systemctl restart xray && success "服务已成功重启" ;;
             4) uninstall_xray_keep_conf ;;
             5) uninstall_xray_completely ;;
-            0) echo -e "\n   ${green}感谢使用，已退出！${none}\n"; exit 0 ;;
-            *) error "无效选项，请输入对应数字" ;;
-        esac
-        
-        read -n 1 -s -r -p "   按任意键返回主菜单..."
-    done
-}
-
-# 脚本入口
-main() {
-    check_root
-    install_dependencies
-    setup_shortcut
-    auto_update_xray
-    main_menu
-}
-
-main "$@"
+            0) echo -e "\n
