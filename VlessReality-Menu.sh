@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (新增配置修改与手动更新 v2.3)
+# Xray VLESS-Reality 一键安装管理脚本 (终极稳如老狗版 v2.4)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-2.3"
+readonly SCRIPT_VERSION="V-Custom-2.4"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -48,22 +48,6 @@ get_public_ip() {
         echo "127.0.0.1"
     else
         echo "$ip"
-    fi
-}
-
-# 设置快捷键 (终极解法：使用 tr 暴力剔除 Windows 回车符)
-setup_shortcut() {
-    local target="/usr/bin/vless"
-    local current_file
-    
-    current_file=$(readlink -f "$0" 2>/dev/null || echo "$0")
-    
-    if [[ -f "$current_file" && "$current_file" != "$target" ]]; then
-        # 暴力过滤所有 \r 字符，彻底解决 bad interpreter 报错
-        cat "$current_file" | tr -d '\r' > "$target"
-        chmod +x "$target"
-        # 刷新 bash 缓存
-        hash -r 2>/dev/null || true
     fi
 }
 
@@ -246,7 +230,6 @@ modify_port_domain() {
         return
     fi
 
-    # 提取旧配置中的其他参数，确保不更换 UUID 和 密钥
     local current_private_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.privateKey' "$xray_config_path")
     local current_public_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$xray_config_path")
 
@@ -290,7 +273,7 @@ uninstall_xray_keep_conf() {
 
 # 7. 彻底卸载
 uninstall_xray_completely() {
-    read -p "   警告: 确定要彻底卸载 Xray 并删除所有节点配置和日志吗？[Y/n]: " confirm
+    read -p "   警告: 确定要彻底卸载 Xray 并删除所有数据吗？[Y/n]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
     info "正在后台彻底清理所有数据..."
     bash -c "$(curl -sL $xray_install_script_url)" @ remove --purge &> /dev/null || true
@@ -314,7 +297,7 @@ main_menu() {
         clear
         echo -e ""
         echo -e "${cyan}   ==========================================================${none}"
-        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.3]${none} | 快捷键: ${green}vless${none}"
+        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.4]${none} | 快捷键: ${green}vless${none}"
         echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         echo -e "   ${magenta}■ 服务器状态${none}"
@@ -361,7 +344,6 @@ main_menu() {
 main() {
     check_root
     install_dependencies
-    setup_shortcut
     main_menu
 }
 
