@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (UI美化 & Mihomo完美排版 v1.9)
+# Xray VLESS-Reality 一键安装管理脚本 (UI对齐优化 & 快捷键终极修复版 v2.0)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.9"
+readonly SCRIPT_VERSION="V-Custom-2.0"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -51,13 +51,24 @@ get_public_ip() {
     fi
 }
 
-# 设置快捷键 (修复版：直接复制物理文件)
+# 设置快捷键 (终极防错修复版)
 setup_shortcut() {
+    local target="/usr/bin/vless"
     local current_file
-    current_file=$(readlink -f "$0")
-    if [[ -f "$current_file" && ! "$current_file" =~ ^/proc/ && ! "$current_file" =~ ^/dev/fd/ && "$current_file" != "/usr/bin/vless" ]]; then
-        cp -f "$current_file" /usr/bin/vless
-        chmod +x /usr/bin/vless
+    
+    # 兼容不同系统获取当前实体文件的真实路径
+    if command -v realpath &>/dev/null; then
+        current_file=$(realpath "$0" 2>/dev/null || echo "")
+    else
+        current_file=$(readlink -f "$0" 2>/dev/null || echo "")
+    fi
+    
+    # 指纹校验：确保获取到的文件就是本脚本，并且不是内存临时文件
+    if [[ -n "$current_file" && -f "$current_file" && "$current_file" != "$target" ]]; then
+        if grep -q "Xray VLESS-Reality" "$current_file" 2>/dev/null; then
+            cp -f "$current_file" "$target"
+            chmod +x "$target"
+        fi
     fi
 }
 
@@ -223,9 +234,9 @@ local mihomo_yaml="proxies:
       short-id: \"${shortid}\""
 
     echo -e ""
-    echo -e "${cyan}   ========================================================${none}"
+    echo -e "${cyan}   ==========================================================${none}"
     echo -e "   ${green}✨ 节点配置信息${none}"
-    echo -e "${cyan}   ========================================================${none}"
+    echo -e "${cyan}   ==========================================================${none}"
     echo -e "   ${yellow}▶ 地址 (IP)  :${none} ${cyan}$ip${none}"
     echo -e "   ${yellow}▶ 端口 (Port):${none} ${cyan}$port${none}"
     echo -e "   ${yellow}▶ UUID       :${none} ${cyan}$uuid${none}"
@@ -238,7 +249,7 @@ local mihomo_yaml="proxies:
     echo -e ""
     echo -e "   ${magenta}🐈 Mihomo (Clash Meta) YAML 格式:${none}"
     echo "$mihomo_yaml"
-    echo -e "${cyan}   ========================================================${none}"
+    echo -e "${cyan}   ==========================================================${none}"
     echo -e ""
 }
 
@@ -275,29 +286,30 @@ main_menu() {
 
         clear
         echo -e ""
-        echo -e "${cyan}   ========================================================${none}"
-        echo -e "${cyan}    🚀 Xray VLESS-Reality 极简管理面板 ${yellow}[v1.9]${none} | 键入 ${green}vless${none}"
-        echo -e "${cyan}   ========================================================${none}"
+        echo -e "${cyan}   ==========================================================${none}"
+        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.0]${none} | 快捷键: ${green}vless${none}"
+        echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         echo -e "   ${magenta}■ 服务器状态${none}"
-        echo -e "   --------------------------------------------------------"
+        echo -e "   ----------------------------------------------------------"
         echo -e "   运行状态 : ${service_status}"
         echo -e "   内存占用 : ${cyan}${mem_info}${none}"
         echo -e ""
         echo -e "   ${magenta}■ 节点配置卡${none}"
-        echo -e "   --------------------------------------------------------"
+        echo -e "   ----------------------------------------------------------"
         echo -e "   监听端口 : ${green}${CURRENT_PORT}${none}"
         echo -e "   伪装 SNI : ${green}${CURRENT_DOMAIN}${none}"
         echo -e "   ShortId  : ${green}${CURRENT_SHORTID}${none}"
         echo -e ""
-        echo -e "${cyan}   ========================================================${none}"
-        echo -e "   ${green}1.${none} 🚀 安装 / 重装 Xray"
-        echo -e "   ${green}2.${none} 🔗 查看节点配置 (分享 URL / Mihomo 格式)"
-        echo -e "   ${yellow}3.${none} 🔄 重启 Xray 服务"
-        echo -e "   ${magenta}4.${none} 🧹 常规卸载 (保留配置)"
-        echo -e "   ${red}5.${none} 🗑️ 彻底卸载 (清除所有数据)"
-        echo -e "   ${green}0.${none} ❌ 退出面板"
-        echo -e "${cyan}   ========================================================${none}"
+        echo -e "${cyan}   ==========================================================${none}"
+        # 通过额外空格针对部分终端中 emoji 宽度不足造成的错位进行了精准人工对齐
+        echo -e "   ${green}[1]${none} 🚀  安装 / 重装 Xray"
+        echo -e "   ${green}[2]${none} 🔗  查看节点配置 (分享 URL / Mihomo 格式)"
+        echo -e "   ${yellow}[3]${none} 🔄  重启 Xray 服务"
+        echo -e "   ${magenta}[4]${none} 🧹  常规卸载 (保留配置)"
+        echo -e "   ${red}[5]${none} 🗑️   彻底卸载 (清除所有数据)"
+        echo -e "   ${green}[0]${none} ❌  退出面板"
+        echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         
         read -p "   请选择执行操作 [0-5]: " choice
