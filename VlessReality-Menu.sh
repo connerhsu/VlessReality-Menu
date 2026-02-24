@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版 v1.4)
+# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版 v1.6 - 新增 Mihomo 格式)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.4"
+readonly SCRIPT_VERSION="V-Custom-1.6"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -169,7 +169,7 @@ install_xray() {
     local key_pair
     key_pair=$("$xray_binary_path" x25519 2>&1 || true)
     
-    # 【修复重点】同时兼容匹配 Public 和 Password 两种标签
+    # 兼容匹配 Public 和 Password 两种标签
     local private_key
     local public_key
     private_key=$(echo "$key_pair" | grep -iE "Private" | awk '{print $NF}')
@@ -204,7 +204,25 @@ view_subscription_info() {
     local shortid=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$xray_config_path" || echo "")
 
     local link_name="Xray-Reality-$(hostname)"
+    
+    # URL 格式
     local vless_url="vless://${uuid}@${ip}:${port}?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&sni=${domain}&fp=chrome&pbk=${public_key}&sid=${shortid}#${link_name}"
+
+    # Mihomo 格式
+    local mihomo_yaml="- name: \"${link_name}\"
+  type: vless
+  server: ${ip}
+  port: ${port}
+  uuid: ${uuid}
+  network: tcp
+  tls: true
+  udp: true
+  flow: xtls-rprx-vision
+  servername: ${domain}
+  client-fingerprint: chrome
+  reality-opts:
+    public-key: ${public_key}
+    short-id: ${shortid}"
 
     echo -e "\n${green}================ Xray 节点信息 ================${none}"
     echo -e "${yellow} 地址 (IP) :${none} ${cyan}$ip${none}"
@@ -213,18 +231,36 @@ view_subscription_info() {
     echo -e "${yellow} 伪装 (SNI) :${none} ${cyan}$domain${none}"
     echo -e "${yellow} 公钥 (PBK) :${none} ${cyan}$public_key${none}"
     echo -e "${yellow} ShortId   :${none} ${cyan}$shortid${none}"
-    echo -e "${green}===============================================${none}"
-    echo -e "${yellow} 分享链接 (VLESS):${none}"
-    echo -e "${cyan}${vless_url}${none}\n"
+    
+    echo -e "\n${green}================ URL 分享链接 ================${none}"
+    echo -e "${cyan}${vless_url}${none}"
+    
+    echo -e "\n${green}============= Mihomo (Clash Meta) =============${none}"
+    echo -e "${cyan}${mihomo_yaml}${none}\n"
 }
 
-# 卸载 Xray
-uninstall_xray() {
-    read -p "确定卸载 Xray？[Y/n]: " confirm
+# 常规卸载 (仅卸载核心，保留配置)
+uninstall_xray_keep_conf() {
+    read -p "确定卸载 Xray 核心 (保留配置文件)？[Y/n]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
+    bash -c "$(curl -sL $xray_install_script_url)" @ remove &> /dev/null || true
+    success "Xray 核心已卸载，配置文件已保留。"
+}
+
+# 彻底卸载 (删除所有数据及配置)
+uninstall_xray_completely() {
+    read -p "警告：确定要彻底卸载 Xray，并删除所有节点配置和本面板快捷键吗？[Y/n]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
+    info "正在后台彻底清理所有数据..."
     bash -c "$(curl -sL $xray_install_script_url)" @ remove --purge &> /dev/null || true
+    
+    # 清理残留目录和文件
+    rm -rf /usr/local/etc/xray
+    rm -rf /usr/local/share/xray
+    rm -rf /var/log/xray
     rm -f /usr/bin/vless
-    success "已卸载。"
+    
+    success "Xray 及所有数据已彻底清理干净！"
 }
 
 # 主菜单
@@ -246,18 +282,20 @@ main_menu() {
         echo -e " ShortId  : ${cyan}${CURRENT_SHORTID}${none}"
         echo -e "${cyan}======================================================${none}"
         echo -e " ${green}1.${none} 安装/重装 Xray"
-        echo -e " ${cyan}2.${none} 查看订阅节点"
+        echo -e " ${cyan}2.${none} 查看订阅节点 (URL / Mihomo格式)"
         echo -e " ${yellow}3.${none} 重启 Xray 服务"
-        echo -e " ${red}4.${none} 卸载 Xray"
+        echo -e " ${magenta}4.${none} 常规卸载 Xray (保留配置)"
+        echo -e " ${red}5.${none} 彻底卸载 Xray (清理所有数据)"
         echo -e " ${green}0.${none} 退出"
         echo -e "${cyan}======================================================${none}"
         
-        read -p "请选择 [0-4]: " choice
+        read -p "请选择 [0-5]: " choice
         case $choice in
             1) install_xray ;;
             2) view_subscription_info ;;
             3) systemctl restart xray && success "已重启" ;;
-            4) uninstall_xray ;;
+            4) uninstall_xray_keep_conf ;;
+            5) uninstall_xray_completely ;;
             0) exit 0 ;;
             *) error "无效选项" ;;
         esac
