@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本
+# Xray VLESS-Reality 一键安装管理脚本 (附带每次运行强制更新)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.1"
+readonly SCRIPT_VERSION="V-Custom-1.2"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -59,6 +59,16 @@ setup_shortcut() {
     if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" | grep -c "$script_path") -eq 0 ]]; then
         echo -e "#!/bin/bash\nbash $script_path \$@" > /usr/bin/vless
         chmod +x /usr/bin/vless
+    fi
+}
+
+# 每次运行强制更新 Xray
+auto_update_xray() {
+    # 只有在已安装的情况下才执行更新，避免空跑报错
+    if [[ -f "$xray_binary_path" ]]; then
+        echo -e "\n${yellow}[!] 正在后台强制更新 Xray 及 Geo 数据至最新版，请稍候...${none}"
+        bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null
+        systemctl restart xray &> /dev/null || true
     fi
 }
 
@@ -160,21 +170,20 @@ install_xray() {
     domain=${domain:-"aod.itunes.apple.com"}
 
     local uuid
-    uuid=$($xray_binary_path uuid) # 改用 xray 官方命令生成更规范的 UUID
+    uuid=$($xray_binary_path uuid)
     info "已自动生成 UUID: ${cyan}${uuid}${none}"
 
     local shortid
     shortid=$(openssl rand -hex 8)
     info "已自动生成 ShortID: ${cyan}${shortid}${none}"
 
-    # 3. 生成 Reality 密钥对 (增强兼容性提取逻辑)
+    # 3. 生成 Reality 密钥对
     info "正在生成 Reality 密钥对..."
     local key_pair
     key_pair=$($xray_binary_path x25519 2>/dev/null)
     
     local private_key
     local public_key
-    # 使用 awk 分割并剔除可能存在的空格
     private_key=$(echo "$key_pair" | grep -i "Private" | awk -F ':' '{print $2}' | tr -d ' \r\n')
     public_key=$(echo "$key_pair" | grep -i "Public" | awk -F ':' '{print $2}' | tr -d ' \r\n')
 
@@ -281,6 +290,7 @@ main() {
     check_root
     install_dependencies
     setup_shortcut
+    auto_update_xray # 新增：在主菜单加载前，检查并强制更新
     main_menu
 }
 
