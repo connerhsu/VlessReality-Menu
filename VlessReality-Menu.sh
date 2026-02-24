@@ -312,4 +312,21 @@ main_menu() {
             3) systemctl restart xray && success "服务已成功重启" ;;
             4) uninstall_xray_keep_conf ;;
             5) uninstall_xray_completely ;;
-            0) echo -e "\n
+            0) echo -e "\n   ${green}感谢使用，已退出！${none}\n"; exit 0 ;;
+            *) error "无效选项，请输入对应数字" ;;
+        esac
+        
+        read -n 1 -s -r -p "   按任意键返回主菜单..."
+    done
+}
+
+# 脚本入口
+main() {
+    check_root
+    install_dependencies
+    setup_shortcut
+    auto_update_xray
+    main_menu
+}
+
+main "$@"
