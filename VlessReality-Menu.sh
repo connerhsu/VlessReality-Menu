@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (UI对齐优化 & 快捷键终极修复版 v2.0)
+# Xray VLESS-Reality 一键安装管理脚本 (终极除虫版 v2.1 - 修复 CRLF 换行符)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-2.0"
+readonly SCRIPT_VERSION="V-Custom-2.1"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -51,24 +51,19 @@ get_public_ip() {
     fi
 }
 
-# 设置快捷键 (终极防错修复版)
+# 设置快捷键 (彻底解决 Windows 复制粘贴引起的 CRLF 报错)
 setup_shortcut() {
     local target="/usr/bin/vless"
     local current_file
     
-    # 兼容不同系统获取当前实体文件的真实路径
-    if command -v realpath &>/dev/null; then
-        current_file=$(realpath "$0" 2>/dev/null || echo "")
-    else
-        current_file=$(readlink -f "$0" 2>/dev/null || echo "")
-    fi
+    current_file=$(readlink -f "$0" 2>/dev/null || echo "$0")
     
-    # 指纹校验：确保获取到的文件就是本脚本，并且不是内存临时文件
-    if [[ -n "$current_file" && -f "$current_file" && "$current_file" != "$target" ]]; then
-        if grep -q "Xray VLESS-Reality" "$current_file" 2>/dev/null; then
-            cp -f "$current_file" "$target"
-            chmod +x "$target"
-        fi
+    # 只有当目前运行的文件不是快捷键本身，且文件存在时，才进行覆盖
+    if [[ -f "$current_file" && "$current_file" != "$target" ]]; then
+        cp -f "$current_file" "$target"
+        # 【终极修复】强制抹除所有的 \r 回车符，防止 Linux 报错 No such file
+        sed -i 's/\r$//' "$target" 2>/dev/null || true
+        chmod +x "$target"
     fi
 }
 
@@ -216,7 +211,6 @@ view_subscription_info() {
     local link_name="Xray-Reality | $(hostname)"
     local vless_url="vless://${uuid}@${ip}:${port}?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&sni=${domain}&fp=chrome&pbk=${public_key}&sid=${shortid}#${link_name}"
 
-# 注意：为了排版不出错，下面的 YAML 字符串绝对不能有脚本缩进！
 local mihomo_yaml="proxies:
   - name: \"${link_name}\"
     type: vless
@@ -287,7 +281,7 @@ main_menu() {
         clear
         echo -e ""
         echo -e "${cyan}   ==========================================================${none}"
-        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.0]${none} | 快捷键: ${green}vless${none}"
+        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.1]${none} | 快捷键: ${green}vless${none}"
         echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         echo -e "   ${magenta}■ 服务器状态${none}"
@@ -302,7 +296,6 @@ main_menu() {
         echo -e "   ShortId  : ${green}${CURRENT_SHORTID}${none}"
         echo -e ""
         echo -e "${cyan}   ==========================================================${none}"
-        # 通过额外空格针对部分终端中 emoji 宽度不足造成的错位进行了精准人工对齐
         echo -e "   ${green}[1]${none} 🚀  安装 / 重装 Xray"
         echo -e "   ${green}[2]${none} 🔗  查看节点配置 (分享 URL / Mihomo 格式)"
         echo -e "   ${yellow}[3]${none} 🔄  重启 Xray 服务"
