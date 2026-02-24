@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版 v1.6 - 新增 Mihomo 格式)
+# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版 v1.8)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.6"
+readonly SCRIPT_VERSION="V-Custom-1.8"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -51,12 +51,12 @@ get_public_ip() {
     fi
 }
 
-# 设置快捷键
+# 设置快捷键 (修复版：直接复制物理文件)
 setup_shortcut() {
-    local script_path
-    script_path=$(readlink -f "$0")
-    if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" 2>/dev/null | grep -c "$script_path" || true) -eq 0 ]]; then
-        echo -e "#!/bin/bash\nbash $script_path \$@" > /usr/bin/vless
+    local current_file
+    current_file=$(readlink -f "$0")
+    if [[ -f "$current_file" && ! "$current_file" =~ ^/proc/ && ! "$current_file" =~ ^/dev/fd/ && "$current_file" != "/usr/bin/vless" ]]; then
+        cp -f "$current_file" /usr/bin/vless
         chmod +x /usr/bin/vless
     fi
 }
@@ -203,26 +203,27 @@ view_subscription_info() {
     local public_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$xray_config_path" || echo "")
     local shortid=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$xray_config_path" || echo "")
 
-    local link_name="Xray-Reality-$(hostname)"
+    local link_name="Xray-Reality | $(hostname)"
     
     # URL 格式
     local vless_url="vless://${uuid}@${ip}:${port}?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&sni=${domain}&fp=chrome&pbk=${public_key}&sid=${shortid}#${link_name}"
 
-    # Mihomo 格式
-    local mihomo_yaml="- name: \"${link_name}\"
-  type: vless
-  server: ${ip}
-  port: ${port}
-  uuid: ${uuid}
-  network: tcp
-  tls: true
-  udp: true
-  flow: xtls-rprx-vision
-  servername: ${domain}
-  client-fingerprint: chrome
-  reality-opts:
-    public-key: ${public_key}
-    short-id: ${shortid}"
+    # Mihomo 格式 (精准对齐截图排版)
+    local mihomo_yaml="proxies:
+  - name: \"${link_name}\"
+    type: vless
+    server: ${ip}
+    port: ${port}
+    uuid: \"${uuid}\"
+    network: tcp
+    tls: true
+    udp: true
+    flow: xtls-rprx-vision
+    servername: \"${domain}\"
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: \"${public_key}\"
+      short-id: \"${shortid}\""
 
     echo -e "\n${green}================ Xray 节点信息 ================${none}"
     echo -e "${yellow} 地址 (IP) :${none} ${cyan}$ip${none}"
