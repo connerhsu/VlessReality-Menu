@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (终极回车符杀手版 v2.2)
+# Xray VLESS-Reality 一键安装管理脚本 (新增配置修改与手动更新 v2.3)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-2.2"
+readonly SCRIPT_VERSION="V-Custom-2.3"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -64,14 +64,6 @@ setup_shortcut() {
         chmod +x "$target"
         # 刷新 bash 缓存
         hash -r 2>/dev/null || true
-    fi
-}
-
-# 每次运行后台更新 (容错处理)
-auto_update_xray() {
-    if [[ -f "$xray_binary_path" ]]; then
-        bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null || true
-        systemctl restart xray &> /dev/null || true
     fi
 }
 
@@ -144,7 +136,7 @@ write_config() {
     }' > "$xray_config_path"
 }
 
-# 安装 Xray 及配置
+# 1. 安装 Xray 及配置
 install_xray() {
     echo ""
     info "正在后台静默安装核心，请稍候..."
@@ -194,7 +186,7 @@ install_xray() {
     view_subscription_info
 }
 
-# 查看订阅信息
+# 2. 查看订阅信息
 view_subscription_info() {
     if [[ ! -f "$xray_config_path" ]]; then 
         error "未找到配置，请先执行安装选项。"
@@ -247,7 +239,48 @@ local mihomo_yaml="proxies:
     echo -e ""
 }
 
-# 常规卸载
+# 3. 单独修改端口与域名
+modify_port_domain() {
+    if [[ ! -f "$xray_config_path" ]]; then 
+        error "未找到配置，请先安装节点。"
+        return
+    fi
+
+    # 提取旧配置中的其他参数，确保不更换 UUID 和 密钥
+    local current_private_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.privateKey' "$xray_config_path")
+    local current_public_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$xray_config_path")
+
+    echo -e ""
+    info "当前监听端口: ${cyan}${CURRENT_PORT}${none}"
+    read -p "   请输入新端口 (直接回车保持不变): " new_port
+    new_port=${new_port:-$CURRENT_PORT}
+
+    info "当前伪装 SNI: ${cyan}${CURRENT_DOMAIN}${none}"
+    read -p "   请输入新伪装 SNI (直接回车保持不变): " new_domain
+    new_domain=${new_domain:-$CURRENT_DOMAIN}
+
+    info "正在应用新配置..."
+    write_config "$new_port" "$CURRENT_UUID" "$new_domain" "$current_private_key" "$current_public_key" "$CURRENT_SHORTID"
+    
+    systemctl restart xray || true
+    success "修改成功，Xray 服务已重启！"
+    view_subscription_info
+}
+
+# 4. 手动更新 Xray 核心
+update_xray_core() {
+    if [[ ! -f "$xray_binary_path" ]]; then 
+        error "核心未安装，请先执行安装选项。"
+        return
+    fi
+    echo -e ""
+    info "正在拉取最新版 Xray 核心及路由规则，请耐心等待..."
+    bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null || true
+    systemctl restart xray &> /dev/null || true
+    success "更新完成！Xray 服务已自动重启。"
+}
+
+# 6. 常规卸载
 uninstall_xray_keep_conf() {
     read -p "   确定卸载 Xray 核心 (保留配置文件)？[Y/n]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
@@ -255,7 +288,7 @@ uninstall_xray_keep_conf() {
     success "Xray 核心已卸载，您的节点配置文件已安全保留。"
 }
 
-# 彻底卸载
+# 7. 彻底卸载
 uninstall_xray_completely() {
     read -p "   警告: 确定要彻底卸载 Xray 并删除所有节点配置和日志吗？[Y/n]: " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
@@ -281,7 +314,7 @@ main_menu() {
         clear
         echo -e ""
         echo -e "${cyan}   ==========================================================${none}"
-        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.2]${none} | 快捷键: ${green}vless${none}"
+        echo -e "   🚀 ${green}Xray VLESS-Reality 极简管理面板${none} ${yellow}[v2.3]${none} | 快捷键: ${green}vless${none}"
         echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         echo -e "   ${magenta}■ 服务器状态${none}"
@@ -298,20 +331,24 @@ main_menu() {
         echo -e "${cyan}   ==========================================================${none}"
         echo -e "   ${green}[1]${none} 🚀  安装 / 重装 Xray"
         echo -e "   ${green}[2]${none} 🔗  查看节点配置 (分享 URL / Mihomo 格式)"
-        echo -e "   ${yellow}[3]${none} 🔄  重启 Xray 服务"
-        echo -e "   ${magenta}[4]${none} 🧹  常规卸载 (保留配置)"
-        echo -e "   ${red}[5]${none} 🗑️   彻底卸载 (清除所有数据)"
+        echo -e "   ${yellow}[3]${none} ⚙️   修改端口与伪装域名"
+        echo -e "   ${cyan}[4]${none} ⬆️   更新 Xray 核心与路由规则"
+        echo -e "   ${cyan}[5]${none} 🔄  重启 Xray 服务"
+        echo -e "   ${magenta}[6]${none} 🧹  常规卸载 (保留配置)"
+        echo -e "   ${red}[7]${none} 🗑️   彻底卸载 (清除所有数据)"
         echo -e "   ${green}[0]${none} ❌  退出面板"
         echo -e "${cyan}   ==========================================================${none}"
         echo -e ""
         
-        read -p "   请选择执行操作 [0-5]: " choice
+        read -p "   请选择执行操作 [0-7]: " choice
         case $choice in
             1) install_xray ;;
             2) view_subscription_info ;;
-            3) systemctl restart xray && success "服务已成功重启" ;;
-            4) uninstall_xray_keep_conf ;;
-            5) uninstall_xray_completely ;;
+            3) modify_port_domain ;;
+            4) update_xray_core ;;
+            5) systemctl restart xray && success "服务已成功重启" ;;
+            6) uninstall_xray_keep_conf ;;
+            7) uninstall_xray_completely ;;
             0) echo -e "\n   ${green}感谢使用，已退出！${none}\n"; exit 0 ;;
             *) error "无效选项，请输入对应数字" ;;
         esac
@@ -325,7 +362,6 @@ main() {
     check_root
     install_dependencies
     setup_shortcut
-    auto_update_xray
     main_menu
 }
 
