@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.0"
+readonly SCRIPT_VERSION="V-Custom-1.1"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -35,10 +35,9 @@ check_root() {
 # 安装依赖项
 install_dependencies() {
     if ! command -v jq &>/dev/null || ! command -v curl &>/dev/null || ! command -v openssl &>/dev/null; then
-        info "正在安装必要的依赖 (jq, curl, openssl)..."
+        info "正在安装必要的依赖 (jq, curl, openssl)，请稍候..."
         apt-get update -y &>/dev/null || true
         apt-get install -y jq curl openssl &>/dev/null
-        success "依赖安装完成。"
     fi
 }
 
@@ -142,11 +141,17 @@ write_config() {
 
 # 安装 Xray 及配置
 install_xray() {
-    info "开始安装并配置 Xray VLESS-Reality..."
+    info "正在后台下载并安装 Xray 核心，请耐心等待..."
 
-    # 1. 下载核心
-    bash -c "$(curl -L $xray_install_script_url)" @ install
+    # 1. 下载核心 (静默模式，屏蔽输出)
+    bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null
     
+    if [[ ! -f "$xray_binary_path" ]]; then
+        error "Xray 核心安装失败！请检查服务器网络。"
+        return 1
+    fi
+    success "Xray 核心安装完成！"
+
     # 2. 收集参数
     read -p "$(echo -e "请输入端口 [1-65535] (默认: ${cyan}8443${none}): ")" port
     port=${port:-8443}
@@ -155,21 +160,26 @@ install_xray() {
     domain=${domain:-"aod.itunes.apple.com"}
 
     local uuid
-    uuid=$(cat /proc/sys/kernel/random/uuid)
+    uuid=$($xray_binary_path uuid) # 改用 xray 官方命令生成更规范的 UUID
     info "已自动生成 UUID: ${cyan}${uuid}${none}"
 
     local shortid
     shortid=$(openssl rand -hex 8)
     info "已自动生成 ShortID: ${cyan}${shortid}${none}"
 
-    # 3. 生成 Reality 密钥对
+    # 3. 生成 Reality 密钥对 (增强兼容性提取逻辑)
     info "正在生成 Reality 密钥对..."
-    local key_pair=$($xray_binary_path x25519)
-    local private_key=$(echo "$key_pair" | awk '/Private key:/ {print $3}')
-    local public_key=$(echo "$key_pair" | awk '/Public key:/ {print $3}')
+    local key_pair
+    key_pair=$($xray_binary_path x25519 2>/dev/null)
+    
+    local private_key
+    local public_key
+    # 使用 awk 分割并剔除可能存在的空格
+    private_key=$(echo "$key_pair" | grep -i "Private" | awk -F ':' '{print $2}' | tr -d ' \r\n')
+    public_key=$(echo "$key_pair" | grep -i "Public" | awk -F ':' '{print $2}' | tr -d ' \r\n')
 
     if [[ -z "$private_key" || -z "$public_key" ]]; then
-        error "生成 Reality 密钥对失败！"
+        error "生成 Reality 密钥对失败！获取到的输出为空。"
         return 1
     fi
 
@@ -219,7 +229,8 @@ uninstall_xray() {
         info "卸载操作已取消。"
         return
     fi
-    bash -c "$(curl -L $xray_install_script_url)" @ remove --purge
+    info "正在后台卸载 Xray..."
+    bash -c "$(curl -sL $xray_install_script_url)" @ remove --purge &> /dev/null
     rm -f /usr/bin/vless
     success "Xray 已成功卸载。"
 }
