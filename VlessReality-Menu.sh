@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版)
+# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版 v1.4)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.3"
+readonly SCRIPT_VERSION="V-Custom-1.4"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -55,7 +55,7 @@ get_public_ip() {
 setup_shortcut() {
     local script_path
     script_path=$(readlink -f "$0")
-    if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" | grep -c "$script_path" || true) -eq 0 ]]; then
+    if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" 2>/dev/null | grep -c "$script_path" || true) -eq 0 ]]; then
         echo -e "#!/bin/bash\nbash $script_path \$@" > /usr/bin/vless
         chmod +x /usr/bin/vless
     fi
@@ -169,11 +169,11 @@ install_xray() {
     local key_pair
     key_pair=$("$xray_binary_path" x25519 2>&1 || true)
     
-    # 【修复重点】使用安全的 awk NF 抓取最后一列，避免任何管道崩溃
+    # 【修复重点】同时兼容匹配 Public 和 Password 两种标签
     local private_key
     local public_key
-    private_key=$(echo "$key_pair" | awk '/[Pp]rivate/ {print $NF}')
-    public_key=$(echo "$key_pair" | awk '/[Pp]ublic/ {print $NF}')
+    private_key=$(echo "$key_pair" | grep -iE "Private" | awk '{print $NF}')
+    public_key=$(echo "$key_pair" | grep -iE "Public|Password" | awk '{print $NF}')
 
     if [[ -z "$private_key" || -z "$public_key" ]]; then
         error "密钥对生成失败！Xray 输出信息: $key_pair"
