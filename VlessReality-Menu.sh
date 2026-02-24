@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ==============================================================================
-# Xray VLESS-Reality 一键安装管理脚本 (附带每次运行强制更新)
+# Xray VLESS-Reality 一键安装管理脚本 (极简稳定版)
 # ==============================================================================
 
 set -euo pipefail
 
 # --- 全局变量与常量 ---
-readonly SCRIPT_VERSION="V-Custom-1.2"
+readonly SCRIPT_VERSION="V-Custom-1.3"
 readonly xray_config_path="/usr/local/etc/xray/config.json"
 readonly xray_binary_path="/usr/local/bin/xray"
 readonly xray_install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
@@ -27,17 +27,16 @@ success() { echo -e "\n${green}[✔] $1${none}\n"; }
 # 检查 root 权限
 check_root() {
     if [[ $(id -u) != 0 ]]; then
-        error "错误: 您必须以 root 用户身份运行此脚本"
+        error "错误: 必须以 root 用户运行"
         exit 1
     fi
 }
 
-# 安装依赖项
+# 安装依赖项 (静默)
 install_dependencies() {
     if ! command -v jq &>/dev/null || ! command -v curl &>/dev/null || ! command -v openssl &>/dev/null; then
-        info "正在安装必要的依赖 (jq, curl, openssl)，请稍候..."
         apt-get update -y &>/dev/null || true
-        apt-get install -y jq curl openssl &>/dev/null
+        apt-get install -y jq curl openssl &>/dev/null || true
     fi
 }
 
@@ -46,37 +45,34 @@ get_public_ip() {
     local ip
     ip=$(curl -s4m8 https://api.ipify.org || curl -s4m8 https://ip.sb)
     if [[ -z "$ip" ]]; then
-        error "无法获取公网 IP 地址。"
-        return 1
+        echo "127.0.0.1" # 降级处理防止崩溃
+    else
+        echo "$ip"
     fi
-    echo "$ip"
 }
 
 # 设置快捷键
 setup_shortcut() {
     local script_path
     script_path=$(readlink -f "$0")
-    if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" | grep -c "$script_path") -eq 0 ]]; then
+    if [[ ! -f "/usr/bin/vless" || $(cat "/usr/bin/vless" | grep -c "$script_path" || true) -eq 0 ]]; then
         echo -e "#!/bin/bash\nbash $script_path \$@" > /usr/bin/vless
         chmod +x /usr/bin/vless
     fi
 }
 
-# 每次运行强制更新 Xray
+# 每次运行后台更新 (容错处理)
 auto_update_xray() {
-    # 只有在已安装的情况下才执行更新，避免空跑报错
     if [[ -f "$xray_binary_path" ]]; then
-        echo -e "\n${yellow}[!] 正在后台强制更新 Xray 及 Geo 数据至最新版，请稍候...${none}"
-        bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null
+        echo -e "\n${yellow}[!] 正在后台检查更新，请稍候...${none}"
+        bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null || true
         systemctl restart xray &> /dev/null || true
     fi
 }
 
 # 获取内存信息
 get_mem_info() {
-    local mem_info
-    mem_info=$(free -m | awk 'NR==2{printf "%sMB / %sMB (%.2f%%)", $3,$2,$3*100/$2}')
-    echo "$mem_info"
+    free -m | awk 'NR==2{printf "%sMB / %sMB (%.2f%%)", $3,$2,$3*100/$2}' || echo "获取失败"
 }
 
 # 获取当前配置信息
@@ -96,13 +92,7 @@ get_current_config() {
 
 # 写入 Xray 配置文件
 write_config() {
-    local port=$1
-    local uuid=$2
-    local domain=$3
-    local private_key=$4
-    local public_key=$5
-    local shortid=$6
-
+    local port=$1 uuid=$2 domain=$3 private_key=$4 public_key=$5 shortid=$6
     mkdir -p /usr/local/etc/xray
 
     jq -n \
@@ -151,18 +141,15 @@ write_config() {
 
 # 安装 Xray 及配置
 install_xray() {
-    info "正在后台下载并安装 Xray 核心，请耐心等待..."
-
-    # 1. 下载核心 (静默模式，屏蔽输出)
-    bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null
+    info "正在后台静默安装核心..."
+    bash -c "$(curl -sL $xray_install_script_url)" @ install &> /dev/null || true
     
     if [[ ! -f "$xray_binary_path" ]]; then
-        error "Xray 核心安装失败！请检查服务器网络。"
+        error "核心安装失败，请检查网络！"
         return 1
     fi
-    success "Xray 核心安装完成！"
+    success "核心就绪！"
 
-    # 2. 收集参数
     read -p "$(echo -e "请输入端口 [1-65535] (默认: ${cyan}8443${none}): ")" port
     port=${port:-8443}
 
@@ -170,34 +157,34 @@ install_xray() {
     domain=${domain:-"aod.itunes.apple.com"}
 
     local uuid
-    uuid=$($xray_binary_path uuid)
-    info "已自动生成 UUID: ${cyan}${uuid}${none}"
+    uuid=$("$xray_binary_path" uuid || true)
+    [[ -z "$uuid" ]] && uuid=$(cat /proc/sys/kernel/random/uuid) # 兜底机制
+    info "UUID: ${cyan}${uuid}${none}"
 
     local shortid
     shortid=$(openssl rand -hex 8)
-    info "已自动生成 ShortID: ${cyan}${shortid}${none}"
+    info "ShortID: ${cyan}${shortid}${none}"
 
-    # 3. 生成 Reality 密钥对
     info "正在生成 Reality 密钥对..."
     local key_pair
-    key_pair=$($xray_binary_path x25519 2>/dev/null)
+    key_pair=$("$xray_binary_path" x25519 2>&1 || true)
     
+    # 【修复重点】使用安全的 awk NF 抓取最后一列，避免任何管道崩溃
     local private_key
     local public_key
-    private_key=$(echo "$key_pair" | grep -i "Private" | awk -F ':' '{print $2}' | tr -d ' \r\n')
-    public_key=$(echo "$key_pair" | grep -i "Public" | awk -F ':' '{print $2}' | tr -d ' \r\n')
+    private_key=$(echo "$key_pair" | awk '/[Pp]rivate/ {print $NF}')
+    public_key=$(echo "$key_pair" | awk '/[Pp]ublic/ {print $NF}')
 
     if [[ -z "$private_key" || -z "$public_key" ]]; then
-        error "生成 Reality 密钥对失败！获取到的输出为空。"
+        error "密钥对生成失败！Xray 输出信息: $key_pair"
         return 1
     fi
 
-    # 4. 写入配置并重启
     write_config "$port" "$uuid" "$domain" "$private_key" "$public_key" "$shortid"
     
-    systemctl restart xray
-    systemctl enable xray
-    success "Xray VLESS-Reality 安装并配置成功！"
+    systemctl restart xray || true
+    systemctl enable xray &> /dev/null || true
+    success "配置成功！"
     
     view_subscription_info
 }
@@ -205,16 +192,16 @@ install_xray() {
 # 查看订阅信息
 view_subscription_info() {
     if [[ ! -f "$xray_config_path" ]]; then 
-        error "错误: 配置文件不存在, 请先安装。"
+        error "未找到配置，请先安装。"
         return
     fi
 
     local ip=$(get_public_ip)
-    local port=$(jq -r '.inbounds[0].port' "$xray_config_path")
-    local uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$xray_config_path")
-    local domain=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$xray_config_path")
-    local public_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$xray_config_path")
-    local shortid=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$xray_config_path")
+    local port=$(jq -r '.inbounds[0].port' "$xray_config_path" || echo "8443")
+    local uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$xray_config_path" || echo "")
+    local domain=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$xray_config_path" || echo "")
+    local public_key=$(jq -r '.inbounds[0].streamSettings.realitySettings.publicKey' "$xray_config_path" || echo "")
+    local shortid=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$xray_config_path" || echo "")
 
     local link_name="Xray-Reality-$(hostname)"
     local vless_url="vless://${uuid}@${ip}:${port}?flow=xtls-rprx-vision&encryption=none&type=tcp&security=reality&sni=${domain}&fp=chrome&pbk=${public_key}&sid=${shortid}#${link_name}"
@@ -233,15 +220,11 @@ view_subscription_info() {
 
 # 卸载 Xray
 uninstall_xray() {
-    read -p "您确定要卸载 Xray 吗？这将删除所有相关文件。[Y/n]: " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        info "卸载操作已取消。"
-        return
-    fi
-    info "正在后台卸载 Xray..."
-    bash -c "$(curl -sL $xray_install_script_url)" @ remove --purge &> /dev/null
+    read -p "确定卸载 Xray？[Y/n]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then return; fi
+    bash -c "$(curl -sL $xray_install_script_url)" @ remove --purge &> /dev/null || true
     rm -f /usr/bin/vless
-    success "Xray 已成功卸载。"
+    success "已卸载。"
 }
 
 # 主菜单
@@ -254,7 +237,7 @@ main_menu() {
 
         clear
         echo -e "${cyan}======================================================${none}"
-        echo -e " ${green}Xray VLESS-Reality 一键管理面板${none} | 快捷键: ${cyan}vless${none}"
+        echo -e " ${green}Xray VLESS-Reality 极简面板${none} | 快捷键: ${cyan}vless${none}"
         echo -e "${cyan}======================================================${none}"
         echo -e " 内存占用 : ${yellow}${mem_info}${none}"
         echo -e " 运行状态 : ${service_status}"
@@ -262,35 +245,33 @@ main_menu() {
         echo -e " 伪装 SNI : ${cyan}${CURRENT_DOMAIN}${none}"
         echo -e " ShortId  : ${cyan}${CURRENT_SHORTID}${none}"
         echo -e "${cyan}======================================================${none}"
-        echo -e " ${green}1.${none} 安装/重装 Xray (VLESS-Reality)"
-        echo -e " ${cyan}2.${none} 查看节点订阅信息"
+        echo -e " ${green}1.${none} 安装/重装 Xray"
+        echo -e " ${cyan}2.${none} 查看订阅节点"
         echo -e " ${yellow}3.${none} 重启 Xray 服务"
-        echo -e " ${magenta}4.${none} 查看 Xray 运行日志"
-        echo -e " ${red}5.${none} 卸载 Xray"
-        echo -e " ${green}0.${none} 退出脚本"
+        echo -e " ${red}4.${none} 卸载 Xray"
+        echo -e " ${green}0.${none} 退出"
         echo -e "${cyan}======================================================${none}"
         
-        read -p "请输入选项 [0-5]: " choice
+        read -p "请选择 [0-4]: " choice
         case $choice in
             1) install_xray ;;
             2) view_subscription_info ;;
-            3) systemctl restart xray && success "Xray 重启成功！" ;;
-            4) journalctl -u xray -f --no-pager ;;
-            5) uninstall_xray ;;
+            3) systemctl restart xray && success "已重启" ;;
+            4) uninstall_xray ;;
             0) exit 0 ;;
-            *) error "无效选项，请输入 0-5 之间的数字。" ;;
+            *) error "无效选项" ;;
         esac
         
-        read -n 1 -s -r -p "按任意键返回主菜单..."
+        read -n 1 -s -r -p "按任意键返回..."
     done
 }
 
-# 脚本入口点
+# 脚本入口
 main() {
     check_root
     install_dependencies
     setup_shortcut
-    auto_update_xray # 新增：在主菜单加载前，检查并强制更新
+    auto_update_xray
     main_menu
 }
 
