@@ -135,8 +135,8 @@ install_xray() {
     read -p "   请输入端口 [1-65535] (默认: 8443): " port
     port=${port:-8443}
 
-    read -p "   请输入SNI域名 (默认: mensura.cdn-apple.com): " domain
-    domain=${domain:-"mensura.cdn-apple.com"}
+    read -p "   请输入SNI域名 (默认: www.cisco.com): " domain
+    domain=${domain:-"www.cisco.com"}
 
     local uuid
     uuid=$("$xray_binary_path" uuid || true)
